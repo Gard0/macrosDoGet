@@ -1,0 +1,238 @@
+//должна быть кнопка переместить (массово) (должно появиться в перемещениях)
+// выделяем строки, перемещаем через кнопку переместить, появляется меню с выбором подразделения,
+// выбирает подразделение 
+// отправка греченкому по кнопке информации о перемещении
+const macros = "https://script.google.com/macros/s/AKfycbxGWLYKL_0eOULqtK_fZyrHVzYwCUpo_ZP9CcLoY8oawD-*********/exec";
+const tabliza_PeremesheniyId = '1qI2wLo5NqqI-gpiUhhxh7HztaF8VlvPPNguzsTkz4n0';
+const tabliza_OborudovanieId = '1RTu-TZeUT-ACeMNDRvFkA1WiWKaYTJktn9dZU5NXFM0';
+const ss_Otpravitel = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName();
+const ui = SpreadsheetApp.getUi();
+const html = HtmlService.createHtmlOutputFromFile('index');
+
+function onOpen() {
+  ui.createMenu('26КАДР')
+    .addItem('ПЕРЕМЕЩЕНИЕ', 'popup')
+    .addToUi();
+}
+
+function popup() {
+  html.setHeight(300);
+  html.setWidth(800);
+  Kto_otpravitel = 'ПЕРЕМЕЩЕНИЕ C (' + ss_Otpravitel + ')->> ';
+  SpreadsheetApp.getUi()
+    .showModelessDialog(html, Kto_otpravitel);
+}
+
+function runOnClick(onClick_poluchatel) { //вернуть (onClick_poluchatel)
+  // onClick_poluchatel = '13СП';
+  Logger.log('onClick_poluchatel ' + onClick_poluchatel);
+  let time = new Date();
+  let poluchatel = onClick_poluchatel;
+  let response = ui.alert('Вы точно хотите отправить оборудование на ' + poluchatel, ui.ButtonSet.YES_NO);
+  if (response == ui.Button.YES) {
+    let otpravitel_adress = Naity_Adress_Otpravitelya(ss_Otpravitel);
+    Logger.log('otpravitel_adress ' + otpravitel_adress);
+    let poluchatel_adress = Naity_Adress_Poluchatelya(poluchatel);
+    Logger.log('poluchatel_adress ' + poluchatel_adress);
+    const ss_Poluchatel = SpreadsheetApp.openById(tabliza_OborudovanieId).getSheetByName(poluchatel);
+    let lastRowPoluchatel = ss_Poluchatel.getDataRange().getLastRow();
+    Logger.log('Последняя строка на СП получателя: ' + lastRowPoluchatel);
+    let otpravitelData = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getActiveRange().getValues();  ///******** */
+    Logger.log(otpravitelData);
+    const otvety = SpreadsheetApp.openById(tabliza_PeremesheniyId).getSheetByName("Таблица перемещений");
+    const listAdmin = SpreadsheetApp.openById(tabliza_PeremesheniyId).getSheetByName("ADMIN");
+    let nomerPeremecheniya = listAdmin.getRange(2, 6).getValue();
+    nomerPeremecheniya = (nomerPeremecheniya + 1);
+    listAdmin.getRange(2, 6).setValue(nomerPeremecheniya);
+    let poluchateli_SP = listAdmin.getRange(2, 1, 14).getValues();
+    let poluchateli_SP_stroka = poluchateli_SP.map(function (r) { return r[0] });
+    Logger.log('poluchateli_SP_stroka ' + poluchateli_SP_stroka);
+    let numbersOfDataRows = otpravitelData.length;
+    let poluchatel_Email = listAdmin.getRange(poluchateli_SP_stroka.indexOf(poluchatel_adress) + 2, 3).getValue();
+    let otpravitel_Email = listAdmin.getRange(poluchateli_SP_stroka.indexOf(otpravitel_adress) + 2, 3).getValue();
+    ss_Poluchatel.getRange(lastRowPoluchatel + 1, 1, numbersOfDataRows, 31).setValues(otpravitelData).setBackground('yellow')
+    ss_Poluchatel.getRange(lastRowPoluchatel + 1, 13, numbersOfDataRows).setValue("Перемещение от: " + ss_Otpravitel);
+    SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getActiveRange().setBackground('grey');
+
+    TmpSheetPeremechenie(numbersOfDataRows, otpravitelData, otpravitel_Email, otvety, otpravitel_adress, nomerPeremecheniya, time, poluchatel_adress); 
+    //временная таблица для передачи значений в форматированном виде в перемещение
+    // ui.alert("Произведено перемещение");
+
+    if ((poluchateli_SP_stroka.indexOf(poluchatel_adress) != -1)) {
+      Logger.log('56 poluchatel_Email ' + poluchatel_Email);
+      Logger.log('57 otpravitel_Email ' + otpravitel_Email);
+      try {
+        OtpavkaMail(poluchatel_Email, otpravitel_Email, otpravitel_adress, poluchatel_adress, nomerPeremecheniya);
+        ui.alert("Перемещение составлено. Ответственному на СП направлено письмо с уведомлением.");
+        // Copy_Data_v_PeremechenieTB(time); //в таблицу Перемещение (ответы)
+        //вписать данные в таблицу перемещение ответы
+        return true;
+      } catch (error) {
+        ui.alert("Письмо не отправлено.");
+        Logger.log("63 OtpavkaMail: Ошибка отправки " + poluchatel_Email + otpravitel_Email);
+        return false;
+      }
+    }
+  } else {
+    ui.alert("Перемещение отменено.");
+    Logger.log('71 The user clicked "No" or the dialog\'s close button.');
+  }
+}
+
+function Naity_Adress_Otpravitelya(otpravitel) {
+  switch (otpravitel) {
+    case "1СП":
+      otpravitel = "СП 1 / Цимлянская улица, дом 7, строение 1";
+      break;
+    case "2СП":
+      otpravitel = "СП 2 / 5 - я Кожуховская улица, дом 26, строение 1";
+      break;
+    case "3СП":
+      otpravitel = "СП 3 / 2 - я Фрезерная улица, дом 8";
+      break;
+    case "4СП":
+      otpravitel = "СП 4 / улица Шкулёва, дом 27, строение 1";
+      break;
+    case "5СП":
+      otpravitel = "СП 5 / 1 - я Карачаровская улица, дом 15";
+      break;
+    case "6СП":
+      otpravitel = "СП 6 / улица Трофимова, дом 27, корпус 2";
+      break;
+    case "7СП":
+      otpravitel = "СП 7 / Красноказарменная улица, дом 10А";
+      break;
+    case "8СП":
+      otpravitel = "СП 8 / Подъёмная улица, дом 15";
+      break;
+    case "9СП":
+      otpravitel = "СП 9 / шоссе Энтузиастов, дом 19, строение 2";
+      break;
+    case "10СП":
+      otpravitel = "СП 10 / Севастопольский проспект, дом 5А";
+      break;
+    case "11СП":
+      otpravitel = "СП 11 / Совхозная улица, 2, стр. 1, стр. 3";
+      break;
+    case "12СП":
+      otpravitel = "СП 12 / Усачёва улица, д. 1, стр. 2, стр. 3, стр. 3а";
+      break;
+    case "13СП":
+      otpravitel = "СП 13 / Люблинская улица, 56/2, стр. 1, стр. 3, стр. 4, стр. 5";
+      break;
+    case "14СП":
+      otpravitel = "СП 14 / Новоостаповская улица, д. 10, стр. 1";
+      break;
+    default:
+      Logger.log('122 Ошибка otpravitel = ' + otpravitel);
+  }
+  return otpravitel;
+}
+
+function Naity_Adress_Poluchatelya(poluchatel) {
+  switch (poluchatel) {
+    case "1СП":
+      poluchatel = "СП 1 / Цимлянская улица, дом 7, строение 1";
+      break;
+    case "2СП":
+      poluchatel = "СП 2 / 5 - я Кожуховская улица, дом 26, строение 1";
+      break;
+    case "3СП":
+      poluchatel = "СП 3 / 2 - я Фрезерная улица, дом 8";
+      break;
+    case "4СП":
+      poluchatel = "СП 4 / улица Шкулёва, дом 27, строение 1";
+      break;
+    case "5СП":
+      poluchatel = "СП 5 / 1 - я Карачаровская улица, дом 15";
+      break;
+    case "6СП":
+      poluchatel = "СП 6 / улица Трофимова, дом 27, корпус 2";
+      break;
+    case "7СП":
+      poluchatel = "СП 7 / Красноказарменная улица, дом 10А";
+      break;
+    case "8СП":
+      poluchatel = "СП 8 / Подъёмная улица, дом 15";
+      break;
+    case "9СП":
+      poluchatel = "СП 9 / шоссе Энтузиастов, дом 19, строение 2";
+      break;
+    case "10СП":
+      poluchatel = "СП 10 / Севастопольский проспект, дом 5А";
+      break;
+    case "11СП":
+      poluchatel = "СП 11 / Совхозная улица, 2, стр. 1, стр. 3";
+      break;
+    case "12СП":
+      poluchatel = "СП 12 / Усачёва улица, д. 1, стр. 2, стр. 3, стр. 3а";
+      break;
+    case "13СП":
+      poluchatel = "СП 13 / Люблинская улица, 56/2, стр. 1, стр. 3, стр. 4, стр. 5";
+      break;
+    case "14СП":
+      poluchatel = "СП 14 / Новоостаповская улица, д. 10, стр. 1";
+      break;
+    default:
+      Logger.log('173 Ошибка poluchatel = ' + poluchatel);
+  }
+  return poluchatel;
+}
+
+function OtpavkaMail(poluchatel_Email, otpravitel_Email, otpravitel_adress, poluchatel_adress, nomerPeremecheniya) {
+  try {
+    let tabliza_Oborudovanie_HTTPS = "https://docs.google.com/spreadsheets/d/1RTu-TZeUT-ACeMNDRvFkA1WiWKaYTJktn9dZU5NXFM0/edit#gid=0";
+
+    MailApp.sendEmail({
+      to: poluchatel_Email,
+      subject: "Внутреннее перемещение №" + nomerPeremecheniya + " нескольких позиций. Введите данные вручную.",
+      htmlBody:
+        "<br>" +
+        "<caption><strong> Внутреннее перемещение №" + nomerPeremecheniya + ". Введите данные вручную. </caption></strong>" +
+        "<table border =1>" +
+        "<strong> Номер перемещения: <td>" + nomerPeremecheniya + "</td></strong> " +
+        "<tr><td><strong> Отправитель: </td><td>" + otpravitel_Email + " /" + otpravitel_adress + "</td></strong>" +
+        "<tr><td><strong> Получатель: </td><td>" + poluchatel_Email + " /" + poluchatel_adress + "</td></strong>" +
+        "<br><tr><td>Ввести данные в таблице можно пройдя по следующей ссылке:" +
+        "<a href='" + tabliza_Oborudovanie_HTTPS + "'>ОБОРУДОВАНИЕ</a></tr></td>" +
+        "</table>"
+    });
+    Logger.log("Отправлено письмо " + poluchatel_Email);
+    return true;
+  } catch (e) {
+    Logger.log('198 Ошибка!  \nData: ' +
+      '\npoluchatel_Email ' + poluchatel_Email +
+      '\notpravitel_Email ' + otpravitel_Email +
+      '\notpravitel_adress ' + otpravitel_adress +
+      '\npoluchatel_adress ' + poluchatel_adress +
+      '\nnomerPeremecheniya ' + nomerPeremecheniya);
+    return false;
+  }
+}
+//временная таблица
+function TmpSheetPeremechenie(numbersOfDataRows, otpravitelData, otpravitel_Email, otvety, otpravitel_adress, nomerPeremecheniya, time, poluchatel_adress) {
+  let tmpSpreadSheet = SpreadsheetApp.openById(tabliza_PeremesheniyId).getSheetByName("tmpSpreadSheet");
+  tmpSpreadSheet.getRange(1, 1, numbersOfDataRows, 31).setValues(otpravitelData);
+  tmpSpreadSheet.getRange(1, 1, numbersOfDataRows).setValue(nomerPeremecheniya); //1
+  tmpSpreadSheet.getRange(1, 2, numbersOfDataRows).setValue(time); //2
+  tmpSpreadSheet.getRange(1, 3, numbersOfDataRows).setValue(otpravitel_adress);
+  tmpSpreadSheet.getRange(1, 4, numbersOfDataRows).setValue(poluchatel_adress);
+  let tmpInv = tmpSpreadSheet.getRange(1, 9, numbersOfDataRows).getValues(); //5
+  tmpSpreadSheet.getRange(1, 6, numbersOfDataRows).setValues(tmpInv);
+  Logger.log("62 tmpInv" + tmpInv);
+  let tmpSer = tmpSpreadSheet.getRange(1, 8, otpravitelData.length).getValues(); //6
+  tmpSpreadSheet.getRange(1, 5, numbersOfDataRows).setValues(tmpSer);
+  Logger.log("62 tmpSer" + tmpSer);
+  tmpSpreadSheet.getRange(1, 7, numbersOfDataRows).setValue(otpravitel_Email);
+  Logger.log("77 otpravitel_Email" + otpravitel_Email);
+  tmpSpreadSheet.getRange('I:L').clearContent();
+  let status = 'Новая';
+  tmpSpreadSheet.getRange(1, 8, numbersOfDataRows).setValue(status);
+  Logger.log("77 status" + status);
+  // ("Перемещение от: " + spOtpravitel);
+  let sortedTmpData = tmpSpreadSheet.getRange(1, 1, numbersOfDataRows, 12).getValues();
+  let lastRow = otvety.getLastRow();
+  otvety.getRange(lastRow + 1, 1, numbersOfDataRows, 12).setValues(sortedTmpData);
+  tmpSpreadSheet.clear();
+  otvety.sort(2, false);
+}
