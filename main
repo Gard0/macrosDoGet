@@ -1,0 +1,268 @@
+const tabliza_OborudovanieId = '1RTu-TZeUT-****';
+const tabliza_PeremesheniyId = '1qI2wLo5NqqI-****';
+
+function doGet(e) {
+  let Nomer = e.parameter.Nomer;
+  let Vremya = e.parameter.Vremya;
+  let Poluchatel_Email = e.parameter.Poluchatel_Email;
+  let date = new Date().toLocaleString('ru', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  let Rejected = e.parameter.Rejected;
+  const ss = SpreadsheetApp.openById(tabliza_PeremesheniyId).getSheetByName("Таблица перемещений");
+  let znachenia = ss.getRange(2, 2, ss.getLastRow()).getDisplayValues();
+  Logger.log('13znachenia' + znachenia);
+  let znachenia2 = znachenia.map(function (r) { return r[0] });
+  let row = znachenia2.indexOf(Vremya) + 2;
+  Logger.log('16row' + row);
+  let status = ss.getRange(row, 8).getValue();
+  if (Rejected == '1' && status != "Проведено в 1С") {
+    ss.getRange(row, 8).setValue('Отмена');
+
+    SendEmailToOtpravitel(Nomer, otpravitel_adress, seriyniyNomer, inventarniyNomer, poluchatel_adress, otpravitel_Mail, Poluchatel_Email);
+
+  }
+
+  let otpravitel_adress = ss.getRange(row, 3).getValue();
+  Logger.log(otpravitel_adress);
+  let poluchatel_adress = ss.getRange(row, 4).getValue();
+  Logger.log(poluchatel_adress);
+  let spOtpravitel = '';
+  spOtpravitel = Naity_SP_otpravitelya(otpravitel_adress);
+  Logger.log('spOtpravitel ' + spOtpravitel);
+  let spPoluchtel = '';
+  spPoluchtel = Naity_SP_poluchatelya(poluchatel_adress);
+  Logger.log('spPoluchtel ' + spPoluchtel);
+  if (spOtpravitel == spPoluchtel) {
+    ss.getRange(row, 8).setValue('Отмена');
+    Logger.log('40 spOtpravitel == spPoluchtel');
+
+    SendEmailToOtpravitel(Nomer, otpravitel_adress, seriyniyNomer, inventarniyNomer, poluchatel_adress, otpravitel_Mail, Poluchatel_Email);
+
+  }
+
+  if (status != 'Отмена' && status != 'Проведено в 1С') {
+    ss.getRange(row, 8).setValue('Принято');
+    ss.getRange(row, 9).setValue(date);
+    let nomerPeremecheniya = ss.getRange(row, 1).getValue();
+    const seriyniyNomer = ss.getRange(row, 5).getDisplayValue();
+    const inventarniyNomer = ss.getRange(row, 6).getDisplayValue();
+    let otpravitel_Mail = ss.getRange(row, 7).getValue();
+
+    Otpravka_v_1C(otpravitel_adress, poluchatel_adress, seriyniyNomer, inventarniyNomer, nomerPeremecheniya);
+
+    let ss2 = SpreadsheetApp.openById(tabliza_OborudovanieId).getSheetByName(spOtpravitel);
+    let ss3 = SpreadsheetApp.openById(tabliza_OborudovanieId).getSheetByName(spPoluchtel);
+
+    if ((inventarniyNomer !== "Нет" || inventarniyNomer !== "") && (seriyniyNomer !== "Нет" || seriyniyNomer !== "")) {
+      FindInvNumber(inventarniyNomer, ss2, spPoluchtel, date, ss3, spOtpravitel);
+    }
+
+    if ((inventarniyNomer == "Нет" || inventarniyNomer == "") && (seriyniyNomer !== "Нет" || seriyniyNomer !== "")) {
+      FindSerNumber(ss2, ss3, seriyniyNomer, spOtpravitel, spPoluchtel, date);
+    }
+
+    if ((inventarniyNomer == "Нет" || inventarniyNomer == "") && (seriyniyNomer == "Нет" || seriyniyNomer == "")) {
+      ss.getRange(row, 8).setValue('Отмена');
+      SendEmailToOtpravitel(Nomer, otpravitel_adress, seriyniyNomer, inventarniyNomer, poluchatel_adress, otpravitel_Mail, Poluchatel_Email);
+      Logger.log("inventarniyNomer = Нет / seriyniyNomer = Нет Отправляем письмо58");
+    }
+
+    ContentService.createTextOutput("Принято.");
+
+  } else if (status == 'Проведено в 1С') {
+
+    return ContentService.createTextOutput("Перемещение уже оформлено");
+  }
+}
+// найти по адресу otpravitel_adress нужный лист в таблице оборудование , добавить статус перемещено и закрасить серым цветом
+//скопировать все данные этой строки и перенести их на лист СП получателя вниз по poluchatel
+
+
+function Otpravka_v_1C(otpravitel_adress, poluchatel_adress, seriyniyNomer, inventarniyNomer, nomerPeremecheniya) {
+  // let ss = SpreadsheetApp.openById(tabliza_PeremesheniyId).getSheetByName("ADMIN");
+  var poluchatel_1C = ss.getRange(2, 4).getValue();
+  try {
+    MailApp.sendEmail({
+      to: poluchatel_1C,
+      subject: 'Произведено внутреннее перемещение:(ГРЕЧЕНКОВ)' + poluchatel_adress,
+      htmlBody: "Здравствуйте!  <br>" +
+        "<caption><strong> Произведено внутреннее перемещение: </caption></strong>" +
+        "<table border =1>" +
+        "<strong> Номер перемещения: <td>" + nomerPeremecheniya + "</td></strong> " +
+        "<tr><td><strong> Отправитель: </td><td>" + " / " + otpravitel_adress + "</td></strong>" +
+        "<tr><td><strong> Получатель: </td><td>" + poluchatel_Email + " / " + poluchatel_adress + "</td></strong>" +
+        "<tr><td><strong> Серийный номер: </td><td>" + seriyniyNomer + "</td></strong>" +
+        "<tr><td><strong> Инвентарный номер: </td><td>" + inventarniyNomer + "</td></strong></td></tr>" +
+        "</table>"
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function Naity_SP_otpravitelya(otpravitel_adress) {
+  switch (otpravitel_adress) {
+    case "СП 1 / Цимлянская улица, дом 7, строение 1":
+      otpravitel_adress = "1СП";
+      break;
+    case "СП 2 / 5 - я Кожуховская улица, дом 26, строение 1":
+      otpravitel_adress = "2СП";
+      break;
+    case "СП 3 / 2 - я Фрезерная улица, дом 8":
+      otpravitel_adress = "3СП";
+      return;
+    case "СП 4 / улица Шкулёва, дом 27, строение 1":
+      otpravitel_adress = "4СП";
+      break;
+    case "СП 5 / 1 - я Карачаровская улица, дом 15":
+      otpravitel_adress = "5СП";
+      break;
+    case "СП 6 / улица Трофимова, дом 27, корпус 2":
+      otpravitel_adress = "6СП";
+      break;
+    case "СП 7 / Красноказарменная улица, дом 10А":
+      otpravitel_adress = "7СП";
+      break;
+    case "СП 8 / Подъёмная улица, дом 15":
+      otpravitel_adress = "8СП";
+      break;
+    case "СП 9 / шоссе Энтузиастов, дом 19, строение 2":
+      otpravitel_adress = "9СП";
+      break;
+    case "СП 10 / Севастопольский проспект, дом 5А":
+      otpravitel_adress = "10СП";
+      break;
+    case "СП 11 / Совхозная улица, 2, стр. 1, стр. 3":
+      otpravitel_adress = "11СП";
+      break;
+    case "СП 12 / Усачёва улица, д. 1, стр. 2, стр. 3, стр. 3а":
+      otpravitel_adress = "12СП";
+      break;
+    case "СП 13 / Люблинская улица, 56/2, стр. 1, стр. 3, стр. 4, стр. 5":
+      otpravitel_adress = "13СП";
+      break;
+    case "СП 14 / Новоостаповская улица, д. 10, стр. 1":
+      otpravitel_adress = "14СП";
+      break;
+    default:
+      Logger.log('127 Ошибка otpravitel_adress = ' + otpravitel_adress);
+  }
+  return otpravitel_adress;
+}
+
+function Naity_SP_poluchatelya(poluchatel_adress) {
+  switch (poluchatel_adress) {
+    case "СП 1 / Цимлянская улица, дом 7, строение 1":
+      poluchatel_adress = "1СП";
+      break;
+    case "СП 2 / 5 - я Кожуховская улица, дом 26, строение 1":
+      poluchatel_adress = "2СП";
+      break;
+    case "СП 3 / 2 - я Фрезерная улица, дом 8":
+      poluchatel_adress = "3СП";
+      break;
+    case "СП 4 / улица Шкулёва, дом 27, строение 1":
+      poluchatel_adress = "4СП";
+      break;
+    case "СП 5 / 1 - я Карачаровская улица, дом 15":
+      poluchatel_adress = "5СП";
+      break;
+    case "СП 6 / улица Трофимова, дом 27, корпус 2":
+      poluchatel_adress = "6СП";
+      break;
+    case "СП 7 / Красноказарменная улица, дом 10А":
+      poluchatel_adress = "7СП";
+      break;
+    case "СП 8 / Подъёмная улица, дом 15":
+      poluchatel_adress = "8СП";
+      break;
+    case "СП 9 / шоссе Энтузиастов, дом 19, строение 2":
+      poluchatel_adress = "9СП";
+      break;
+    case "СП 10 / Севастопольский проспект, дом 5А":
+      poluchatel_adress = "10СП";
+      break;
+    case "СП 11 / Совхозная улица, 2, стр. 1, стр. 3":
+      poluchatel_adress = "11СП";
+      break;
+    case "СП 12 / Усачёва улица, д. 1, стр. 2, стр. 3, стр. 3а":
+      poluchatel_adress = "12СП";
+      break;
+    case "СП 13 / Люблинская улица, 56/2, стр. 1, стр. 3, стр. 4, стр. 5":
+      poluchatel_adress = "13СП";
+      break;
+    case "СП 14 / Новоостаповская улица, д. 10, стр. 1":
+      poluchatel_adress = "14СП";
+      break;
+    default:
+      Logger.log('179 Ошибка poluchatel_adress = ' + poluchatel_adress);
+  }
+  return poluchatel_adress;
+}
+
+function FindInvNumber(inventarniyNomer, ss2, spPoluchtel, date, ss3, spOtpravitel) {
+  let findingInventarniyNomer = ss2.getRange("I:I").getDisplayValues().map(function (r) { return r[0] });
+  Logger.log('findingInventarniyNomer ' + findingInventarniyNomer);
+  Logger.log('inventarniyNomer ' + inventarniyNomer);
+  let rowInventarniyNomer = findingInventarniyNomer.indexOf(inventarniyNomer) + 1;
+  Logger.log('rowInventarniyNomer ' + rowInventarniyNomer);
+  for (let i = 0; i < findingInventarniyNomer.length; i++) {
+    if (findingInventarniyNomer[i].toString().indexOf(inventarniyNomer) !== -1) {
+      ss2.getRange(rowInventarniyNomer, 13).setValue("Перемещение на : " + spPoluchtel);
+      ss2.getRange(rowInventarniyNomer, 14).setValue(date);
+      ss2.getRange(rowInventarniyNomer, 1, 1, 14).setBackgroundColor("grey");
+      let peremechenieStroki = ss2.getRange(rowInventarniyNomer, 1, 1, 11).getValues();
+      ss3.getRange(ss3.getLastRow() + 1, 1, 1, 11).setValues(peremechenieStroki);
+      ss3.getRange(ss3.getLastRow(), 12).setValue(date);
+      ss3.getRange(ss3.getLastRow(), 13).setValue("Перемещение от: " + spOtpravitel);
+      ss3.getRange(ss3.getLastRow(), 1, 1, 13).setBackgroundColor("yellow");
+      Logger.log('peremechenieStroki ' + peremechenieStroki);
+    } else if (rowInventarniyNomer <= 1) {
+      Logger.log("Инвентарный номер не найден");
+      return inventarniyNomer = "";
+    }
+  }
+}
+
+function FindSerNumber(ss2, ss3, seriyniyNomer, spOtpravitel, spPoluchtel, date) {
+  let findingSeriyniyNomer = ss2.getRange("H:H").getDisplayValues().map(function (r) { return r[0] });
+  Logger.log('findingSeriyniyNomer ' + findingSeriyniyNomer);
+  let rowSeriyniyNomer = findingSeriyniyNomer.indexOf(seriyniyNomer) + 1;
+  Logger.log('rowSeriyniyNomer ' + rowSeriyniyNomer);
+  Logger.log('seriyniyNomer' + seriyniyNomer);
+  for (let i = 0; i < findingSeriyniyNomer.length; i++) {
+    if (findingSeriyniyNomer[i].toString().indexOf(seriyniyNomer) !== -1) {
+      ss2.getRange(rowSeriyniyNomer, 13).setValue("Перемещение на: " + spPoluchtel);
+      ss2.getRange(rowSeriyniyNomer, 14).setValue(date);
+      ss2.getRange(rowSeriyniyNomer, 1, 1, 13).setBackgroundColor("grey");
+      let peremechenieStroki2 = ss2.getRange(rowSeriyniyNomer, 1, 1, 11).getValues();
+      ss3.getRange(ss3.getLastRow() + 1, 1, 1, 11).setValues(peremechenieStroki2);
+      ss3.getRange(ss3.getLastRow(), 12).setValue(date);
+      ss3.getRange(ss3.getLastRow(), 13).setValue("Перемещение от: " + spOtpravitel);
+      ss3.getRange(ss3.getLastRow(), 1, 1, 13).setBackgroundColor("yellow");
+      break;
+    } else if (rowSeriyniyNomer <= 1) {
+      Logger.log(" номер не найден");
+      return seriyniyNomer = "";
+    }
+  }
+}
+
+function SendEmailToOtpravitel(Nomer, otpravitel_adress, seriyniyNomer, inventarniyNomer, poluchatel_adress, otpravitel_Mail, Poluchatel_Email) {
+  let tabliza_Oborudovanie_HTTPS = "https://docs.google.com/spreadsheets/d/1RTu-TZeUT-ACeMNDRvFkA1WiWKaYTJktn9dZU5NXFM0/edit#gid=0";
+  MailApp.sendEmail({
+    to: otpravitel_Mail,
+    subject: "Внутреннее перемещение №" + Nomer + " - не оформлено. Введите данные вручную.",
+    htmlBody:
+      "<br>" +
+      "<caption><strong> Внутреннее перемещение №" + Nomer + " - не оформлено. Введите данные вручную. </caption></strong>" +
+      "<table border =1>" +
+      "<strong> Номер перемещения: <td>" + Nomer + "</td></strong> " +
+      "<tr><td><strong> Отправитель: </td><td>" + otpravitel_Mail + " /" + otpravitel_adress + "</td></strong>" +
+      "<tr><td><strong> Получатель: </td><td>" + Poluchatel_Email + " /" + poluchatel_adress + "</td></strong>" +
+      "<tr><td><strong> Серийный номер: </td><td>" + seriyniyNomer + "</td></strong>" +
+      "<tr><td><strong> Инвентарный номер: </td><td>" + inventarniyNomer + "</td></strong></td></tr>" +
+      "<br><tr>Ввести данные в таблице можно пройдя по следующей ссылке: <a href='" + tabliza_Oborudovanie_HTTPS + "'>ссылка</a></tr>" +
+      "</table>"
+  });
+}
